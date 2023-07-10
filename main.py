@@ -170,7 +170,7 @@ def update_ship_position(keys_pressed, ship_img_rect, ship_hitbox, speed=5):
 
     return ship_img_rect, ship_hitbox
 
-def load_ship():
+def load_ship_image():
     ship_img = pygame.image.load("ship.png")
     ship_width = ship_img.get_width() // 2
     ship_height = ship_img.get_height() // 2
