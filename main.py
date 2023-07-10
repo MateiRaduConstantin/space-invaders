@@ -65,6 +65,26 @@ def process_bullet_creation(game_params, ship_img_rect):
         game_params["bullets"].append(bullet)
         game_params["last_bullet_time"] = pygame.time.get_ticks()
 
+class Ship:
+    def __init__(self):
+        self.img = pygame.image.load("ship.png")
+        self.width = self.img.get_width() // 2
+        self.height = self.img.get_height() // 2
+        self.img = pygame.transform.scale(self.img, (self.width, self.height))
+        self.rect = self.img.get_rect()
+        self.rect.topleft = (WIDTH // 2, HEIGHT - self.rect.height)
+        self.speed = 5
+
+    def update_position(self, keys_pressed):
+        if keys_pressed[pygame.K_a] or keys_pressed[pygame.K_LEFT]:
+            self.rect.x = max(0, self.rect.x - self.speed)
+        if keys_pressed[pygame.K_d] or keys_pressed[pygame.K_RIGHT]:
+            self.rect.x = min(WIDTH - self.rect.width, self.rect.x + self.speed)
+        return self.rect
+
+    def draw(self, background):
+        background.blit(self.img, self.rect)
+
 def spawn_enemies(game_params, enemy_img):
     if time.time() - game_params["last_spawn_time"] > ENEMY_SPAWN_INTERVAL:
         available_segments = [i for i, occupied in enumerate(game_params["occupied_segments"]) if not occupied]
@@ -160,27 +180,7 @@ def update_level(game_params):
         game_params["enemy_font_speed"] = 1
     return game_params
 
-def update_ship_position(keys_pressed, ship_img_rect, ship_hitbox, speed=5):
-    if keys_pressed[pygame.K_a] or keys_pressed[pygame.K_LEFT]:
-        ship_img_rect.x = max(0, ship_img_rect.x - speed)
-    if keys_pressed[pygame.K_d] or keys_pressed[pygame.K_RIGHT]:
-        ship_img_rect.x = min(WIDTH - ship_img_rect.width, ship_img_rect.x + speed)
-    ship_hitbox.x = ship_img_rect.x
-    ship_hitbox.y = ship_img_rect.y
-
-    return ship_img_rect, ship_hitbox
-
-def load_ship_image():
-    ship_img = pygame.image.load("ship.png")
-    ship_width = ship_img.get_width() // 2
-    ship_height = ship_img.get_height() // 2
-    ship_img = pygame.transform.scale(ship_img, (ship_width, ship_height))
-    ship_img_rect = ship_img.get_rect()
-    ship_img_rect.topleft = (WIDTH // 2, HEIGHT - ship_img_rect.height)
-    return ship_img, ship_img_rect
-
 def main():
-    # Initialize imported pygame modules
     pygame.init()
     game_params = initialize_game_parameters()
     enemies_passed = 0
@@ -193,27 +193,19 @@ def main():
 
     game_params["background"].fill(COLOR_WHITE)
 
-    # Load ship
-    ship_img, ship_img_rect = load_ship_image()
+    ship = Ship()
 
-    # Load enemy
     enemy_img = pygame.image.load("enemy.png")
     enemy_img = pygame.transform.scale(enemy_img, (ENEMY_WIDTH, ENEMY_HEIGHT))
 
     enemy_img_rect = enemy_img.get_rect()
 
-    # Enemies
     game_params["enemies"] = [([(pygame.Rect(random.randint(0, WIDTH - ENEMY_WIDTH), -i * ENEMY_HEIGHT, ENEMY_WIDTH, ENEMY_HEIGHT), enemy_img, 0) for i in range(1)], None, [0, WIDTH])]
 
-    # Last spawn time
     game_params["last_spawn_time"] = time.time()
-
-    # Update hitbox
-    ship_hitbox = ship_img_rect.copy()
 
     last_shooting_state_change = time.time()
 
-    # Main loop
     while True:
         clock.tick(FPS)
         game_params["background"].fill(COLOR_WHITE)
@@ -223,45 +215,36 @@ def main():
                 pygame.quit()
                 sys.exit()
 
-        # Shooting bullets
-        process_bullet_creation(game_params, ship_img_rect)
+        process_bullet_creation(game_params, ship.rect)
 
-        # Draw score
         game_params["score_text"] = game_params["font"].render("Score: " + str(game_params["score"]), True, SCORE_COLOR)
-        # Draw score in the top right corner
         game_params["background"].blit(game_params["score_text"], (WIDTH - game_params["score_text"].get_width() - 10, 10))
 
         game_params = update_level(game_params)
 
-        # Draw level
         level_text = game_params["font"].render("Level: " + str(game_params["level"]), True, LEVEL_COLOR)
-        # Draw score in the top right corner
         game_params["background"].blit(level_text, (10, 10))
 
         update_bullets(game_params)
 
-        # Update ship
         keys_pressed = pygame.key.get_pressed()
-        ship_img_rect, ship_hitbox = update_ship_position(keys_pressed, ship_img_rect, ship_hitbox)
+        ship.update_position(keys_pressed)
 
-        # Restrict within screen
-        ship_img_rect.x = max(0, min(ship_img_rect.x, WIDTH - ship_img_rect.width))
-
-        # Draw ship
-        game_params["background"].blit(ship_img, ship_img_rect)
+        ship.draw(game_params["background"])
         spawn_enemies(game_params, enemy_img)
 
-        # Update enemies
         for index, enemy_data in enumerate(game_params["enemies"].copy()):
-            direction_vector = update_enemy_group(game_params, enemy_data, ship_img_rect)
+            direction_vector = update_enemy_group(game_params, enemy_data, ship.rect)
             if direction_vector is None:
                 continue
             else:
                 dx, dy = direction_vector
+
             enemy_group, segment, segment_bounds = enemy_data
             group_leader = enemy_group[0]
             time_since_spawn = time.time() - group_leader[2]
-            if HEIGHT - group_leader[0].y > 700:  # The distance at which the enemies stop advancing
+
+            if HEIGHT - group_leader[0].y > 700:
                 group_leader[0].x += ENEMY_SINE_SPEED * dx
                 group_leader[0].y += game_params["enemy_font_speed"] * dy
 
@@ -270,15 +253,12 @@ def main():
                 enemies_passed = remove_out_screen_enemy(enemy, enemy_group, enemy_rect)
                 handle_bullet_enemy_collision(game_params, enemy, enemy_group, enemy_rect)
 
-                # Enemy shooting
                 if game_params["shooting"] and random.random() < game_params["shooting_chance"]:
                     enemy_bullet = pygame.Rect(enemy[0].centerx - BULLET_WIDTH // 2, enemy[0].y + enemy[0].height, BULLET_WIDTH // 2, BULLET_HEIGHT // 2)
                     game_params["enemy_bullets"].append(enemy_bullet)
 
-        # Update enemy bullets
-        update_enemy_bullets(game_params, ship_hitbox)
+        update_enemy_bullets(game_params, ship.rect)
 
-        # Check if it's time to change the shooting state
         if time.time() - last_shooting_state_change > game_params["shooting_interval"]:
             game_params["shooting"] = not game_params["shooting"]
             last_shooting_state_change = time.time()
@@ -286,7 +266,6 @@ def main():
         game_params["score_text"] = game_params["font"].render("Score: " + str(game_params["score"]), True, SCORE_COLOR)
         game_params["background"].blit(game_params["score_text"], (WIDTH - game_params["score_text"].get_width() - 10, 10))
 
-        # Render current game state
         pygame.display.flip()
         screen.blit(game_params["background"], (0, 0))
 
