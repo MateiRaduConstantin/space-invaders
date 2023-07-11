@@ -116,11 +116,14 @@ def handle_bullet_enemy_collision(game_params, enemy, enemy_group):
             game_params["score"] += 100  # Increment score
             break
 
-def update_enemy_position(enemy, group_leader, i, time_since_spawn, enemy_group, game_params, enemy_img):
+def update_enemy(enemy, group_leader, i, time_since_spawn, enemy_group, game_params, enemy_img):
     if i != 0:
         enemy.rect.x = group_leader.rect.x + i * ENEMY_DELAY_HEIGHT * math.sin(ENEMY_SINE_SPEED * (time_since_spawn + i/len(enemy_group)))
         enemy.rect.y = group_leader.rect.y + game_params["enemy_font_speed"] + i * ENEMY_HEIGHT  # Update the enemy's y position
     enemy.draw(game_params["background"])
+    if game_params["shooting"] and random.random() < game_params["shooting_chance"]:
+        enemy_bullet = pygame.Rect(enemy.rect.centerx - BULLET_WIDTH // 2, enemy.rect.y + enemy.height, BULLET_WIDTH // 2, BULLET_HEIGHT // 2)
+        game_params["enemy_bullets"].append(enemy_bullet)
 
 def remove_out_screen_enemy(enemy, enemy_group):
     enemies_passed = 0
@@ -278,13 +281,9 @@ def main():
                 group_leader.rect.y += game_params["enemy_font_speed"] * dy
 
             for i, enemy in enumerate(enemy_group):
-                update_enemy_position(enemy, group_leader, i, time_since_spawn, enemy_group, game_params, enemy_img)
+                update_enemy(enemy, group_leader, i, time_since_spawn, enemy_group, game_params, enemy_img)
                 enemies_passed = remove_out_screen_enemy(enemy, enemy_group)
                 handle_bullet_enemy_collision(game_params, enemy, enemy_group)
-
-                if game_params["shooting"] and random.random() < game_params["shooting_chance"]:
-                    enemy_bullet = pygame.Rect(enemy.rect.centerx - BULLET_WIDTH // 2, enemy.rect.y + enemy.height, BULLET_WIDTH // 2, BULLET_HEIGHT // 2)
-                    game_params["enemy_bullets"].append(enemy_bullet)
         update_enemy_bullets(game_params, ship.rect)
 
         if time.time() - last_shooting_state_change > game_params["shooting_interval"]:
