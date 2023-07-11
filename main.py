@@ -17,7 +17,7 @@ ENEMY_WIDTH, ENEMY_HEIGHT = 50, 50
 ENEMY_SPACING = 20
 ENEMY_DELAY_HEIGHT = (ENEMY_SPACING + ENEMY_HEIGHT)
 
-BULLET_WIDTH, BULLET_HEIGHT = 10, 20
+BULLET_WIDTH, BULLET_HEIGHT = 5, 10
 
 SEGMENT_COUNT = 5
 MAX_ENEMIES = 12
@@ -31,6 +31,9 @@ SCORE_COLOR = (0, 0, 0)
 LEVEL_COLOR = (0, 0, 0)
 
 def initialize_game_parameters():
+
+    enemy_img = pygame.image.load("enemy.png")
+    enemy_img = pygame.transform.scale(enemy_img, (ENEMY_WIDTH, ENEMY_HEIGHT))
     game_params = {
         "background": pygame.Surface((WIDTH, HEIGHT)),
         "font": pygame.font.Font(None, 36),
@@ -46,7 +49,8 @@ def initialize_game_parameters():
         "last_bullet_time": 0,
         "bullets": [],
         "enemy_bullets": [],
-        "enemies": [],
+        "enemies": [([Enemy(enemy_img, random.randint(0, WIDTH - ENEMY_WIDTH), 0, ENEMY_WIDTH, ENEMY_HEIGHT, 0)], None, [0, WIDTH])],
+        "enemy_img": enemy_img,
         "enemies_killed": 0,
     }
     return game_params
@@ -62,7 +66,7 @@ def update_bullets(game_params):
 def process_bullet_creation(game_params, ship_img_rect):
     keys_pressed = pygame.key.get_pressed()
     if keys_pressed[pygame.K_SPACE] and pygame.time.get_ticks() - game_params["last_bullet_time"] >= BULLET_DELAY:
-        bullet = pygame.Rect(ship_img_rect.centerx - BULLET_WIDTH // 2, ship_img_rect.y - BULLET_HEIGHT, BULLET_WIDTH // 2, BULLET_HEIGHT // 2)
+        bullet = pygame.Rect(ship_img_rect.centerx - BULLET_WIDTH, ship_img_rect.y - BULLET_HEIGHT, BULLET_WIDTH, BULLET_HEIGHT)
         game_params["bullets"].append(bullet)
         game_params["last_bullet_time"] = pygame.time.get_ticks()
 
@@ -95,16 +99,19 @@ def spawn_enemies(game_params):
                 segment = random.choice(available_segments)
                 game_params["occupied_segments"][segment] = True
                 segment_bounds = (segment * (WIDTH / SEGMENT_COUNT), (segment + 1) * (WIDTH / SEGMENT_COUNT) - ENEMY_WIDTH)
-
                 spawn_x = int(segment * (WIDTH / SEGMENT_COUNT) + (WIDTH / SEGMENT_COUNT) / 2 - ENEMY_WIDTH / 2)
 
-                enemy_img = pygame.image.load("enemy.png")
-                enemy_img = pygame.transform.scale(enemy_img, (ENEMY_WIDTH, ENEMY_HEIGHT))
-
                 if game_params["level"] > 1:
-                    game_params["enemies"].append(([Enemy(enemy_img, spawn_x, -(ENEMY_DELAY_HEIGHT * 2) - i * (ENEMY_DELAY_HEIGHT * 2), ENEMY_WIDTH, ENEMY_HEIGHT, time.time()) for i in range(4)], segment, segment_bounds))
+                   enemies = []
+                   for i in range(4):
+                       y_position = -(ENEMY_DELAY_HEIGHT * 2) - i * (ENEMY_DELAY_HEIGHT * 2)
+                       enemy = Enemy(game_params["enemy_img"], spawn_x, y_position, ENEMY_WIDTH, ENEMY_HEIGHT, time.time())
+                       enemies.append(enemy)
                 else:
-                    game_params["enemies"].append(([Enemy(enemy_img, spawn_x, 0, ENEMY_WIDTH, ENEMY_HEIGHT, time.time())], segment, segment_bounds))
+                   single_enemy = Enemy(game_params["enemy_img"], spawn_x, 0, ENEMY_WIDTH, ENEMY_HEIGHT, time.time())
+                   enemies = [single_enemy]
+
+                game_params["enemies"].append((enemies, segment, segment_bounds))
                 game_params["last_spawn_time"] = time.time()
 
 def handle_bullet_enemy_collision(game_params, enemy, enemy_group):
@@ -116,13 +123,22 @@ def handle_bullet_enemy_collision(game_params, enemy, enemy_group):
             game_params["score"] += 100  # Increment score
             break
 
-def update_enemy(enemy, group_leader, i, time_since_spawn, enemy_group, game_params, enemy_img):
-    if i != 0:
-        enemy.rect.x = group_leader.rect.x + i * ENEMY_DELAY_HEIGHT * math.sin(ENEMY_SINE_SPEED * (time_since_spawn + i/len(enemy_group)))
-        enemy.rect.y = group_leader.rect.y + game_params["enemy_font_speed"] + i * ENEMY_HEIGHT  # Update the enemy's y position
+def update_enemy(enemy, group_leader, enemy_position, time_since_spawn, enemy_group, game_params):
+    if enemy_position != 0:
+        sine_factor = ENEMY_SINE_SPEED * (time_since_spawn + enemy_position/len(enemy_group))
+        x_offset = enemy_position * ENEMY_DELAY_HEIGHT * math.sin(sine_factor)
+        enemy.rect.x = group_leader.rect.x + x_offset
+
+        y_offset = game_params["enemy_font_speed"] + enemy_position * ENEMY_HEIGHT
+        enemy.rect.y = group_leader.rect.y + y_offset
+
     enemy.draw(game_params["background"])
+
     if game_params["shooting"] and random.random() < game_params["shooting_chance"]:
-        enemy_bullet = pygame.Rect(enemy.rect.centerx - BULLET_WIDTH // 2, enemy.rect.y + enemy.height, BULLET_WIDTH // 2, BULLET_HEIGHT // 2)
+        bullet_x = enemy.rect.centerx - BULLET_WIDTH
+        bullet_y = enemy.rect.y + enemy.height
+        enemy_bullet = pygame.Rect(bullet_x, bullet_y, BULLET_WIDTH, BULLET_HEIGHT)
+
         game_params["enemy_bullets"].append(enemy_bullet)
 
 def remove_out_screen_enemy(enemy, enemy_group):
@@ -187,33 +203,6 @@ class Enemy:
     def draw(self, background):
         background.blit(self.img, self.rect)
 
-def spawn_new_enemy_group(game_params):
-    enemy_img = pygame.image.load("enemy.png")
-    enemy_img = pygame.transform.scale(enemy_img, (ENEMY_WIDTH, ENEMY_HEIGHT))
-    enemy_group = [Enemy(enemy_img, random.randint(0, WIDTH - ENEMY_WIDTH), 0, ENEMY_WIDTH, ENEMY_HEIGHT)]
-    segment_bounds = [0, WIDTH]
-    game_params["enemies"].append([enemy_group, None, segment_bounds])
-    game_params["last_spawn_time"] = time.time()
-
-def handle_collisions(game_params, ship):
-    for enemy_data in game_params["enemies"]:
-        enemy_group, _, _ = enemy_data
-        for enemy in enemy_group:
-            if enemy.rect.colliderect(ship.rect):
-                game_params["running"] = False
-                game_params["game_over"] = True
-
-            for bullet in game_params["bullets"]:
-                if enemy.rect.colliderect(bullet):
-                    enemy_group.remove(enemy)
-                    game_params["bullets"].remove(bullet)
-
-            for bullet in game_params["enemy_bullets"]:
-                if ship.rect.colliderect(bullet):
-                    game_params["running"] = False
-                    game_params["game_over"] = True
-                    game_params["enemy_bullets"].remove(bullet)
-
 def update_display(game_params, ship):
     game_params["background"].fill(COLOR_WHITE)
 
@@ -236,14 +225,7 @@ def main():
 
     game_params["background"].fill(COLOR_WHITE)
     ship = Ship()
-
-    enemy_img = pygame.image.load("enemy.png")
-    enemy_img = pygame.transform.scale(enemy_img, (ENEMY_WIDTH, ENEMY_HEIGHT))
-
-    game_params["enemies"] = [([Enemy(enemy_img, random.randint(0, WIDTH - ENEMY_WIDTH), 0, ENEMY_WIDTH, ENEMY_HEIGHT, 0)], None, [0, WIDTH])]
-
     game_params["last_spawn_time"] = time.time()
-
     last_shooting_state_change = time.time()
 
     while True:
@@ -281,7 +263,7 @@ def main():
                 group_leader.rect.y += game_params["enemy_font_speed"] * dy
 
             for i, enemy in enumerate(enemy_group):
-                update_enemy(enemy, group_leader, i, time_since_spawn, enemy_group, game_params, enemy_img)
+                update_enemy(enemy, group_leader, i, time_since_spawn, enemy_group, game_params)
                 enemies_passed = remove_out_screen_enemy(enemy, enemy_group)
                 handle_bullet_enemy_collision(game_params, enemy, enemy_group)
         update_enemy_bullets(game_params, ship.rect)
